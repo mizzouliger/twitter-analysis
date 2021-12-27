@@ -35,61 +35,55 @@ public class TwitterService {
                     .setCookieSpec(CookieSpecs.STANDARD).build())
             .build();
 
-
-    public void getTweets() throws IOException, URISyntaxException {
+    public static void main(String args[]) throws IOException, URISyntaxException {
         String bearerToken = "AAAAAAAAAAAAAAAAAAAAAKMx9gAAAAAADPUG2ub%2BkRrNw5z46KiWl6yB2yk%3DJfYv4YNWmjgBUELEQXsebG13wBZoXLSYlPQoQmbnZejC0IgPyX";
-//        String response = getTwitterUser(bearerToken, "RepHartzler");
-        String tweets = getTweetsByUserID("237763317", bearerToken);
-        System.out.println(tweets);
-    }
 
-    private String getTweetsByUserID(String userID, String bearerToken) throws IOException, URISyntaxException {
-        String searchResponse = null;
+        if (null != bearerToken) {
+            Data user = getUserByUserName("RepHartzler", bearerToken);
 
-        URIBuilder uriBuilder = new URIBuilder("https://api.twitter.com/2/users/" + userID + "/tweets");
-        ArrayList<NameValuePair> queryParameters;
-        queryParameters = new ArrayList<>();
-//        queryParameters.add(new BasicNameValuePair("pagination_token", "7140dibdnow9c7btw3z21ao1vtzvt6aythkd7ii0a7f3t"));
-        queryParameters.add(new BasicNameValuePair("max_results", "5"));
-
-        uriBuilder.addParameters(queryParameters);
-
-        HttpGet httpGet = new HttpGet(uriBuilder.build());
-        httpGet.setHeader("Authorization", String.format("Bearer %s", bearerToken));
-        httpGet.setHeader("Content-Type", "application/json");
-
-        HttpResponse response = httpClient.execute(httpGet);
-        HttpEntity entity = response.getEntity();
-        if (null != entity) {
-            searchResponse = EntityUtils.toString(entity, "UTF-8");
-            InputStream entireTweet = new ByteArrayInputStream(searchResponse.getBytes(StandardCharsets.UTF_8));
-
-            ObjectMapper objectMapper = new ObjectMapper();
-            JsonNode map = objectMapper.readTree(entireTweet);
-
-            JsonNode data = map.get("data");
-
-            String text = new BufferedReader(
-                    new InputStreamReader(entireTweet, StandardCharsets.UTF_8))
-                    .lines()
-                    .collect(Collectors.joining("\n"));
-
-            System.out.println(text);
-
+            String response = getTweets("1138505981460193280,1261326399320715264", bearerToken, user.getId());
+            System.out.println(response);
+        } else {
+            System.out.println("There was a problem getting you bearer token. Please make sure you set the BEARER_TOKEN environment variable");
         }
-        return searchResponse;
     }
 
-    private String getTwitterUser(String bearerToken, String userName) throws IOException, URISyntaxException {
+    private static String getOAuthToken() throws IOException {
 
-        String searchResponse = null;
+        URL url = new URL("https://api.twitter.com/oauth2/token");
+        HttpURLConnection http = (HttpURLConnection)url.openConnection();
+        http.setRequestMethod("POST");
+        http.setDoOutput(true);
+        http.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        http.setRequestProperty("Authorization", "Basic dGRRbkc0UVZwWmR3dWxBNnVZQUxVaXNKOTpKN0I5U3VjM2JFZUxVemVKQjcxT0hOTVVWWnJWMnRwd0RJY3F6bzR1YUIyVEdvYmJBOQ==");
+
+        String data = "grant_type=client_credentials";
+
+        byte[] out = data.getBytes(StandardCharsets.UTF_8);
+
+        OutputStream stream = http.getOutputStream();
+        stream.write(out);
+
+        System.out.println(http.getResponseCode() + " " + http.getResponseMessage());
+        http.disconnect();
+
+        String output = new String(out, StandardCharsets.UTF_8);
+        return Arrays.toString(out);
+    }
+
+    private static Data getUserByUserName(String usernames, String bearerToken) throws URISyntaxException, IOException {
+        String userResponse = null;
+
+        HttpClient httpClient = HttpClients.custom()
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setCookieSpec(CookieSpecs.STANDARD).build())
+                .build();
 
         URIBuilder uriBuilder = new URIBuilder("https://api.twitter.com/2/users/by");
         ArrayList<NameValuePair> queryParameters;
         queryParameters = new ArrayList<>();
-        queryParameters.add(new BasicNameValuePair("usernames", userName));
+        queryParameters.add(new BasicNameValuePair("usernames", usernames));
         queryParameters.add(new BasicNameValuePair("user.fields", "created_at,description,pinned_tweet_id"));
-
         uriBuilder.addParameters(queryParameters);
 
         HttpGet httpGet = new HttpGet(uriBuilder.build());
@@ -97,22 +91,48 @@ public class TwitterService {
         httpGet.setHeader("Content-Type", "application/json");
 
         HttpResponse response = httpClient.execute(httpGet);
-
         HttpEntity entity = response.getEntity();
         if (null != entity) {
-            searchResponse = EntityUtils.toString(entity, "UTF-8");
-            InputStream textOfTweet = new ByteArrayInputStream(searchResponse.getBytes(StandardCharsets.UTF_8));
-
-            String text = new BufferedReader(
-                    new InputStreamReader(textOfTweet, StandardCharsets.UTF_8))
-                    .lines()
-                    .collect(Collectors.joining("\n"));
-
-            System.out.println(text);
-
+            userResponse = EntityUtils.toString(entity, "UTF-8");
         }
-        return searchResponse;
+        Gson gson = new Gson();
+        DataList responseData = gson.fromJson(userResponse, DataList.class);
+        return responseData.getData().get(0);
+    }
 
+    /*
+     * This method calls the v2 Tweets endpoint with ids as query parameter
+     * */
+    private static String getTweets(String ids, String bearerToken, String userId) throws IOException, URISyntaxException {
+        String tweetResponse = null;
+
+        HttpClient httpClient = HttpClients.custom()
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setCookieSpec(CookieSpecs.STANDARD).build())
+                .build();
+
+        URIBuilder uriBuilder = new URIBuilder(String.format("https://api.twitter.com/2/users/%s/tweets", userId));
+        ArrayList<NameValuePair> queryParameters;
+        queryParameters = new ArrayList<>();
+//        queryParameters.add(new BasicNameValuePair("ids", ids));
+        queryParameters.add(new BasicNameValuePair("tweet.fields", "created_at"));
+        uriBuilder.addParameters(queryParameters);
+
+        HttpGet httpGet = new HttpGet(uriBuilder.build());
+        httpGet.setHeader("Authorization", String.format("Bearer %s", bearerToken));
+        httpGet.setHeader("Content-Type", "application/json");
+
+        HttpResponse response = httpClient.execute(httpGet);
+        HttpEntity entity = response.getEntity();
+        if (null != entity) {
+            tweetResponse = EntityUtils.toString(entity, "UTF-8");
+        }
+
+        Gson gson = new Gson();
+        DataList responseData = gson.fromJson(tweetResponse, DataList.class);
+        responseData.getData().get(0);
+
+        return tweetResponse;
     }
 
 }
